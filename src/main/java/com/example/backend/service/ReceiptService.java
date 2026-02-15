@@ -33,6 +33,7 @@ public class ReceiptService {
   private final ReceiptRepository receiptRepository;
   private final GoogleOcrClient googleOcrClient;
   private final GeminiService geminiService;
+  private final AuditLogService auditLogService;
 
   private final String uploadDir =
       System.getProperty("user.home") + File.separator + "remate_uploads" + File.separator;
@@ -72,6 +73,47 @@ public class ReceiptService {
     } catch (Exception e) {
       throw new RuntimeException("FILE_PROCESSING_FAILED", e);
     }
+  }
+
+  @Transactional
+  public Receipt updateStatus(Long id, Long userId, ReceiptStatus status, String reason) {
+    Receipt receipt = getReceiptSecurely(id, userId);
+    ReceiptStatus oldStatus = receipt.getStatus();
+
+    receipt.updateStatus(status, reason);
+
+    auditLogService.logStatusChange(id, userId, oldStatus, status, reason);
+
+    return receipt;
+  }
+
+  @Transactional
+  public Receipt updateReceipt(
+      Long id, Long userId, Integer totalAmount, String storeName, LocalDateTime tradeAt) {
+    Receipt receipt = getReceiptSecurely(id, userId);
+    ReceiptStatus oldStatus = receipt.getStatus();
+
+    receipt.updateInfo(totalAmount, storeName, tradeAt);
+
+    if (oldStatus != receipt.getStatus()) {
+      auditLogService.logStatusChange(
+          id, userId, oldStatus, receipt.getStatus(), "정보 수정으로 인한 상태 변경");
+    }
+
+    return receipt;
+  }
+
+  public List<Receipt> getReceipts(Long userId, boolean isAdmin) {
+    if (isAdmin) {
+      return receiptRepository.findAll();
+    }
+    return receiptRepository.findAllByUserId(userId);
+  }
+
+  public Receipt getReceiptSecurely(Long id, Long userId) {
+    return receiptRepository
+        .findByIdAndUserId(id, userId)
+        .orElseThrow(() -> new RuntimeException("RECEIPT_NOT_FOUND"));
   }
 
   private Receipt parseAndSave(
@@ -171,19 +213,6 @@ public class ReceiptService {
         && (h[3] & 0xFF) == 0x47;
   }
 
-  public List<Receipt> getReceipts(Long userId, boolean isAdmin) {
-    if (isAdmin) {
-      return receiptRepository.findAll();
-    }
-    return receiptRepository.findAllByUserId(userId);
-  }
-
-  public Receipt getReceiptSecurely(Long id, Long userId) {
-    return receiptRepository
-            .findByIdAndUserId(id, userId)
-            .orElseThrow(() -> new RuntimeException("RECEIPT_NOT_FOUND"));
-  }
-
   public byte[] generateCsv(List<Receipt> receipts) {
     StringBuilder csv = new StringBuilder();
     csv.append('\ufeff');
@@ -200,21 +229,6 @@ public class ReceiptService {
           .append("\n");
     }
     return csv.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
-  }
-
-  @Transactional
-  public Receipt updateStatus(Long id, Long userId, ReceiptStatus status) {
-    Receipt receipt = getReceiptSecurely(id, userId);
-    receipt.updateStatus(status);
-    return receipt;
-  }
-
-  @Transactional
-  public Receipt updateReceipt(
-      Long id, Long userId, Integer totalAmount, String storeName, LocalDateTime tradeAt) {
-    Receipt receipt = getReceiptSecurely(id, userId);
-    receipt.updateInfo(totalAmount, storeName, tradeAt);
-    return receipt;
   }
 
   @Transactional
