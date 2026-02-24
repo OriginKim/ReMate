@@ -2,53 +2,73 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Receipt Master | 메인</title>
     <style>
-        :root { --kakao-color: #FEE500; --google-color: #4285F4; }
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background-color: #f4f7f6; }
+        :root { --kakao-color: #FEE500; --google-color: #4285F4; --main-color: #4CAF50; }
+        body { font-family: sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background-color: #f4f7f6; }
         .container { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; max-width: 400px; width: 90%; }
-        .btn { display: block; padding: 12px; margin: 10px 0; border-radius: 8px; text-decoration: none; font-weight: bold; transition: 0.3s; }
+        .btn { display: block; padding: 12px; margin: 10px 0; border-radius: 8px; text-decoration: none; font-weight: bold; transition: 0.3s; border: none; font-size: 0.95rem; cursor: pointer; }
         .btn-google { background: var(--google-color); color: white; }
         .btn-kakao { background: var(--kakao-color); color: #3c1e1e; }
-        .btn-upload { background: #333; color: white; border: none; cursor: pointer; width: 100%; }
+        .btn-signin { background: var(--main-color); color: white; }
+        .btn-signup { border: 1px solid var(--main-color); color: var(--main-color); background: white; }
         .hidden { display: none; }
-        #token-box { background: #eee; padding: 10px; font-size: 0.7rem; word-break: break-all; border-radius: 5px; margin-top: 15px; color: #666; }
+        .divider { margin: 20px 0; display: flex; align-items: center; color: #ccc; font-size: 0.8rem; }
+        .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: #eee; margin: 0 10px; }
+        #loading-section { color: #666; font-style: italic; }
     </style>
 </head>
 <body>
 <div class="container">
     <h1>🧾 Receipt Master</h1>
 
-    <div id="before-login">
-        <p>소셜 계정으로 간편하게 시작하세요</p>
-        <a href="/oauth2/authorization/google" class="btn btn-google">Google 로그인</a>
-        <a href="/oauth2/authorization/kakao" class="btn btn-kakao">Kakao 로그인</a>
+    <div id="intro-section">
+        <p><strong>영수증 관리의 시작</strong></p>
+        <p style="font-size: 0.85rem; color: #888; margin-bottom: 25px;">간편하게 시작하세요.</p>
+
+        <a href="/oauth2/authorization/google" class="btn btn-google">Google로 시작하기</a>
+        <a href="/oauth2/authorization/kakao" class="btn btn-kakao">Kakao로 시작하기</a>
+
+        <div class="divider">또는</div>
+
+        <a href="/signin.html" class="btn btn-signin">이메일로 로그인</a>
+        <a href="/signup.html" class="btn btn-signup">새로 가입하기</a>
     </div>
 
-    <div id="after-login" class="hidden">
-        <p>🎉 <strong>기원님</strong>, 분석 준비가 완료되었습니다!</p>
-        <button onclick="location.href='/upload.html'" class="btn btn-upload">📸 영수증 관리 및 업로드</button>
-        <div id="token-box"></div>
-        <a href="/" onclick="localStorage.clear()" style="display:block; margin-top:15px; color:#999; font-size:0.8rem;">로그아웃</a>
+    <div id="loading-section" class="hidden">
+        <p>🔍 워크스페이스 확인 중...</p>
+        <p style="font-size: 0.8rem; color: #999; margin-top: 10px;">로그인 상태가 확인되었습니다.</p>
+        <button onclick="logout()" style="margin-top: 20px; border: none; background: none; color: #cc0000; cursor: pointer; text-decoration: underline;">로그아웃 테스트</button>
     </div>
 </div>
 
 <script>
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token');
-
-    if (token) {
-        localStorage.setItem('accessToken', token);
-        document.getElementById('before-login').classList.add('hidden');
-        document.getElementById('after-login').classList.remove('hidden');
-        document.getElementById('token-box').innerText = "내 토큰: " + token;
-        window.history.replaceState({}, document.title, "/");
-    } else if (localStorage.getItem('accessToken')) {
-        document.getElementById('before-login').classList.add('hidden');
-        document.getElementById('after-login').classList.remove('hidden');
-        document.getElementById('token-box').innerText = "로그인 세션 유지 중";
+    function logout() {
+        localStorage.clear();
+        location.href = "/";
     }
+
+    window.onload = () => {
+        // 1. URL 주소창에서 토큰 추출 (소셜 로그인용)
+        const urlParams = new URLSearchParams(window.location.search);
+        const tokenFromUrl = urlParams.get('token');
+
+        if (tokenFromUrl) {
+            localStorage.setItem('accessToken', tokenFromUrl);
+            window.history.replaceState({}, document.title, "/");
+        }
+
+        // 2. 토큰 확인
+        const token = localStorage.getItem('accessToken');
+
+        if (token) {
+            // 3. 로그인 상태면 UI 전환 후 그대로 멈춤
+            document.getElementById('intro-section').classList.add('hidden');
+            document.getElementById('loading-section').classList.remove('hidden');
+
+            console.log("로그인 성공! 토큰 보관 중:", token);
+        }
+    };
 </script>
 </body>
 </html>
