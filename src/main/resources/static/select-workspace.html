@@ -95,7 +95,7 @@
   window.onload = () => {
     const userRole = localStorage.getItem('userRole');
 
-    // 관리자일 때만 관리자 카드를 보여줌
+
     if (userRole === 'ADMIN') {
       document.getElementById('adminOnlyCard').style.display = 'block';
     }
@@ -112,11 +112,11 @@
       const workspaces = await res.json();
 
       const html = workspaces.map(ws => {
-        const isAdmin = (ws.role === 'ADMIN'); // 내 권한 확인
+        const isAdmin = (ws.role === 'ADMIN');
         const cardClass = isAdmin ? 'admin-card' : 'member-card';
         const badge = isAdmin ? '👑 관리자' : '👤 멤버';
 
-        // 클릭하면 해당 워크스페이스 권한을 로컬스토리지에 저장하고 입장
+
         return `
                 <div class="list-item ${cardClass}" onclick="enterWorkspace(${ws.workspaceId}, '${ws.role}')"
                      style="cursor:pointer; padding:20px; border-radius:15px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
@@ -134,7 +134,7 @@
     }
   }
 
-  // 워크스페이스 입장 처리 함수
+
   function enterWorkspace(wsId, role) {
     localStorage.setItem('currentWorkspaceId', wsId);
     localStorage.setItem('userRole', role);

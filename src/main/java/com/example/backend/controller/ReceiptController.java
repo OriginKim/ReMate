@@ -5,6 +5,7 @@ import com.example.backend.audit.AuditLogService;
 import com.example.backend.domain.receipt.ReceiptStatus;
 import com.example.backend.dto.ReceiptSummaryDto;
 import com.example.backend.entity.Receipt;
+import com.example.backend.global.common.ApiResponse;
 import com.example.backend.service.ReceiptService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -29,21 +30,15 @@ public class ReceiptController {
   private final AuditLogService auditLogService;
 
   @GetMapping
-  public ResponseEntity<List<ReceiptSummaryDto>> getAllReceipts(
-      @RequestParam Long workspaceId,
-      @RequestParam Long userId,
-      @RequestParam(defaultValue = "false") boolean isAdmin) {
-    return ResponseEntity.ok(receiptService.getWorkspaceReceipts(workspaceId, userId, isAdmin));
+  public ResponseEntity<ApiResponse<List<ReceiptSummaryDto>>> getAllReceipts(
+      @RequestParam Long workspaceId) {
+    return ResponseEntity.ok(ApiResponse.ok(receiptService.getWorkspaceReceipts(workspaceId)));
   }
 
   @GetMapping("/export")
-  public ResponseEntity<byte[]> exportToCsv(
-      @RequestParam Long workspaceId,
-      @RequestParam Long userId,
-      @RequestParam(defaultValue = "false") boolean isAdmin) {
+  public ResponseEntity<byte[]> exportToCsv(@RequestParam Long workspaceId) {
     try {
-      List<ReceiptSummaryDto> dtos =
-          receiptService.getWorkspaceReceipts(workspaceId, userId, isAdmin);
+      List<ReceiptSummaryDto> dtos = receiptService.getWorkspaceReceipts(workspaceId);
       byte[] out = receiptService.generateCsvFromDto(dtos);
       return ResponseEntity.ok()
           .header(HttpHeaders.CONTENT_TYPE, "text/csv; charset=UTF-8")
@@ -56,46 +51,37 @@ public class ReceiptController {
   }
 
   @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-  public ResponseEntity<?> upload(
+  public ResponseEntity<ApiResponse<Receipt>> upload(
       @RequestHeader(value = "X-IDEMPOTENCY-KEY", required = false) String idempotencyKey,
       @RequestPart("file") MultipartFile file,
-      @RequestParam("workspaceId") Long workspaceId,
-      @RequestParam("userId") Long userId) {
+      @RequestParam("workspaceId") Long workspaceId) {
 
-    if (file == null || file.isEmpty()) return ResponseEntity.badRequest().body("파일이 없습니다.");
+    if (file == null || file.isEmpty())
+      return ResponseEntity.badRequest().body(ApiResponse.ok(null));
 
     String key =
         (idempotencyKey == null || idempotencyKey.isBlank())
             ? "auto-" + UUID.randomUUID()
             : idempotencyKey;
 
-    try {
-      Receipt receipt = receiptService.uploadAndProcess(key, file, workspaceId, userId);
-      return ResponseEntity.ok(receipt);
-    } catch (Exception e) {
-      log.error("업로드 실패", e);
-      return ResponseEntity.internalServerError().body(e.getMessage());
-    }
+    Receipt receipt = receiptService.uploadAndProcess(key, file, workspaceId);
+    return ResponseEntity.ok(ApiResponse.ok(receipt));
   }
 
   @PatchMapping("/{id}/status")
-  public ResponseEntity<Receipt> updateStatus(
+  public ResponseEntity<ApiResponse<Receipt>> updateStatus(
       @PathVariable Long id,
       @RequestParam Long workspaceId,
-      @RequestParam Long userId,
-      @RequestParam(defaultValue = "false") boolean isAdmin,
       @RequestParam ReceiptStatus status,
-      @RequestParam(required = false, defaultValue = "관리자 요청") String reason) {
+      @RequestParam(required = false) String reason) {
     return ResponseEntity.ok(
-        receiptService.updateStatus(id, workspaceId, userId, status, reason, isAdmin));
+        ApiResponse.ok(receiptService.updateStatus(id, workspaceId, status, reason)));
   }
 
   @PutMapping("/{id}")
-  public ResponseEntity<Receipt> updateReceipt(
+  public ResponseEntity<ApiResponse<Receipt>> updateReceipt(
       @PathVariable Long id,
       @RequestParam Long workspaceId,
-      @RequestParam Long userId,
-      @RequestParam(defaultValue = "false") boolean isAdmin,
       @RequestBody Map<String, Object> payload) {
 
     String storeName =
@@ -112,8 +98,8 @@ public class ReceiptController {
       }
     }
 
-    LocalDateTime tradeAt = null;
     Object tradeAtObj = payload.get("tradeAt");
+    LocalDateTime tradeAt;
     if (tradeAtObj != null && !String.valueOf(tradeAtObj).isBlank()) {
       try {
         tradeAt =
@@ -129,40 +115,26 @@ public class ReceiptController {
     }
 
     return ResponseEntity.ok(
-        receiptService.updateReceipt(
-            id, workspaceId, userId, totalAmount, storeName, tradeAt, isAdmin));
+        ApiResponse.ok(
+            receiptService.updateReceipt(id, workspaceId, totalAmount, storeName, tradeAt)));
   }
 
   @PostMapping(value = "/upload/multiple", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-  public ResponseEntity<List<Receipt>> uploadMultiple(
+  public ResponseEntity<ApiResponse<List<Receipt>>> uploadMultiple(
       @RequestPart("files") List<MultipartFile> files,
-      @RequestParam("workspaceId") Long workspaceId,
-      @RequestParam("userId") Long userId) {
+      @RequestParam("workspaceId") Long workspaceId) {
     if (files == null || files.isEmpty()) return ResponseEntity.badRequest().build();
-    List<Receipt> results = receiptService.uploadMultiple(files, workspaceId, userId);
-    return ResponseEntity.ok(results);
+    return ResponseEntity.ok(ApiResponse.ok(receiptService.uploadMultiple(files, workspaceId)));
   }
 
   @GetMapping("/{id}/history")
-  public ResponseEntity<List<AuditLog>> getHistory(@PathVariable Long id) {
-    try {
-      List<AuditLog> logs = auditLogService.findAllByReceiptId(id);
-      return ResponseEntity.ok(logs);
-    } catch (Exception e) {
-      log.error("이력 조회 실패 - receiptId: {}", id, e);
-      return ResponseEntity.internalServerError().build();
-    }
+  public ResponseEntity<ApiResponse<List<AuditLog>>> getHistory(@PathVariable Long id) {
+    List<AuditLog> logs = auditLogService.findAllByReceiptId(id);
+    return ResponseEntity.ok(ApiResponse.ok(logs));
   }
 
   @GetMapping("/stats")
-  public ResponseEntity<java.util.Map<String, Object>> getStats(@RequestParam Long workspaceId) {
-    return ResponseEntity.ok(receiptService.getAdminStats(workspaceId));
-  }
-
-  @PostMapping("/{id}/resubmit")
-  public ResponseEntity<Receipt> resubmit(
-      @PathVariable Long id, @RequestParam Long workspaceId, @RequestParam Long userId) {
-    log.info("영수증 재제출 요청 - receiptId: {}, userId: {}", id, userId);
-    return ResponseEntity.ok(receiptService.resubmitReceipt(id, workspaceId, userId));
+  public ResponseEntity<ApiResponse<Map<String, Object>>> getStats(@RequestParam Long workspaceId) {
+    return ResponseEntity.ok(ApiResponse.ok(receiptService.getAdminStats(workspaceId)));
   }
 }

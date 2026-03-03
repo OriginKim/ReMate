@@ -18,4 +18,5 @@ public class ReceiptSummaryDto {
   private ReceiptStatus status;
   private String userName;
   List<String> tags;
+  private String rejectionReason;
 }

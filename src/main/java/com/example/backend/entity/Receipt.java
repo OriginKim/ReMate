@@ -2,6 +2,7 @@ package com.example.backend.entity;
 
 import com.example.backend.domain.receipt.ReceiptStatus;
 import com.example.backend.domain.receipt.SystemErrorCode;
+import com.example.backend.global.error.ErrorCode;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import lombok.*;
@@ -102,16 +103,13 @@ public class Receipt {
   }
 
   public void updateStatus(ReceiptStatus status, String reason, Long actorUserId) {
-    if (!this.status.canTransitionTo(status)) {
-      throw new IllegalStateException("INVALID_STATE_TRANSITION");
-    }
 
-    if (status == ReceiptStatus.APPROVED && this.userId.equals(actorUserId)) {
-      throw new IllegalStateException("SELF_APPROVAL_NOT_ALLOWED");
+    if (!this.status.canTransitionTo(status)) {
+      throw ErrorCode.INVALID_REQUEST.toException("상태 변경이 불가능한 단계입니다.");
     }
 
     if (status == ReceiptStatus.REJECTED && (reason == null || reason.isBlank())) {
-      throw new IllegalStateException("REJECT_REASON_REQUIRED");
+      throw ErrorCode.REJECT_REASON_REQUIRED.toException();
     }
 
     this.status = status;

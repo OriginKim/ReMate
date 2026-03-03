@@ -181,7 +181,7 @@
 
     const token = localStorage.getItem('accessToken');
     const workspaceId = localStorage.getItem('currentWorkspaceId');
-    const userId = localStorage.getItem('currentUserId');
+    const clientSideUserId = localStorage.getItem('currentUserId');
     const userRole = localStorage.getItem('userRole');
 
     window.checkIsAdmin = function() {
@@ -201,22 +201,24 @@
     }
 
     async function fetchReceipts() {
-        if (!token || !workspaceId || !userId) return;
+        if (!token || !workspaceId) return;
 
         const isReallyAdmin = window.checkIsAdmin();
 
         try {
-            const res = await fetch(`/api/receipts?workspaceId=${workspaceId}&userId=${userId}&isAdmin=${isReallyAdmin}`, {
+            const res = await fetch(`/api/receipts?workspaceId=${workspaceId}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            receiptData = await res.json();
+            const json = await res.json();
+            receiptData = json.data;
 
             if (isReallyAdmin) {
                 fetch(`/api/receipts/stats?workspaceId=${workspaceId}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 })
                     .then(res => res.json())
-                    .then(stats => {
+                    .then(json => {
+                        const stats = json.data;
                         const total = stats.totalCount || 0;
                         const pending = stats.pendingCount || 0;
                         const amount = (Number(stats.totalAmount) || 0).toLocaleString();
@@ -229,24 +231,21 @@
             const html = receiptData.map(r => {
                 const isFinal = (r.status === 'APPROVED' || r.status === 'REJECTED');
 
-                const canEdit = !isFinal && (isReallyAdmin || r.userId == userId);
+                const canEdit = !isFinal && (isReallyAdmin || r.userId == clientSideUserId);
                 const canProcess = !isFinal && isReallyAdmin;
 
-                // ✅ 관리자(isReallyAdmin)라면 본인 것이 아니어도 재제출 버튼이 보이게 수정
-                const canResubmit = r.status === 'REJECTED' && (isReallyAdmin || r.userId == userId);
+
 
                 const tradeAt = r.tradeAt ? r.tradeAt.replace('T', ' ').substring(0, 16) : '-';
                 const nightBadge = r.nightTime ? '<span style="background:#1e293b; color:#fff; padding:2px 6px; border-radius:4px; font-size:0.65rem; margin-left:4px;">🌙 야간</span>' : '';
                 const reasonAttr = (r.status === 'REJECTED' && r.rejectionReason) ? `data-reason="${escapeHtml(r.rejectionReason)}"` : '';
 
-                // ✅ 백엔드에서 전달된 tags 배열을 배지 형태로 렌더링
+
                 const tagHtml = (r.tags || []).map(tag =>
                     `<span style="background:#f1f5f9; color:#475569; padding:2px 6px; border-radius:4px; font-size:0.65rem; margin-left:4px; border:1px solid #e2e8f0;">${escapeHtml(tag)}</span>`
                 ).join('');
 
-                const amountDisplay = (r.totalAmount === 0 && !isReallyAdmin && r.userId != userId)
-                    ? `<span class="mask-badge">🔐 비공개</span>`
-                    : `<strong>${(r.totalAmount || 0).toLocaleString()}원</strong>`;
+                const amountDisplay = `<strong>${(r.totalAmount || 0).toLocaleString()}원</strong>`;
 
                 return `<tr>
                     <td>${r.id}</td>
@@ -262,7 +261,7 @@
                       <button class="action-btn" data-action="history" data-id="${r.id}">📜 이력</button>
                       <button class="action-btn" ${canProcess ? '' : 'disabled'} data-action="approve" data-id="${r.id}" style="color:#16a34a;">승인</button>
                       <button class="action-btn" ${canProcess ? '' : 'disabled'} data-action="reject" data-id="${r.id}" style="color:#dc2626;">반려</button>
-                      <button class="action-btn" ${canResubmit ? '' : 'disabled'} data-action="resubmit" data-id="${r.id}" style="color:var(--primary);">🔄 재제출</button>
+
                     </td>
                 </tr>`;
             }).join('');
@@ -273,12 +272,11 @@
     async function uploadReceipts() {
         const files = el('fileInput').files;
         if (files.length === 0) return alert("파일을 선택해주세요.");
-        if (!workspaceId || !userId) return alert('사용자 정보 누락');
+        if (!workspaceId) return alert('워크스페이스 정보 누락');
 
         const formData = new FormData();
         Array.from(files).forEach(f => formData.append('files', f));
         formData.append('workspaceId', workspaceId);
-        formData.append('userId', userId);
 
         el('progCont').style.display = 'block';
         el('progBar').style.width = '30%';
@@ -286,7 +284,7 @@
 
         try {
             el('progBar').style.width = '60%';
-            const res = await fetch('/api/receipts/upload/multiple', {
+            const res = await fetch(`/api/receipts/upload/multiple?workspaceId=${workspaceId}`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` },
                 body: formData
@@ -314,19 +312,25 @@
     }
 
     function exportCSV() {
-        const params = new URLSearchParams({ workspaceId, userId, isAdmin: window.checkIsAdmin() });
+        const params = new URLSearchParams({ workspaceId });
         window.location.href = `/api/receipts/export?${params}`;
     }
-
     async function updateStatus(id, status) {
         let reason = "관리자 요청";
         if (status === 'REJECTED') {
             const input = prompt("반려 사유를 입력하세요:");
             if (input === null) return;
-            reason = input || "사유 미입력";
+
+
+            const trimmedReason = input.trim();
+            if (!trimmedReason) {
+                alert("반려 사유는 공백일 수 없습니다. 정확한 사유를 입력해주세요.");
+                return;
+            }
+            reason = trimmedReason;
         }
         try {
-            const params = new URLSearchParams({ workspaceId, userId, isAdmin: window.checkIsAdmin(), status, reason });
+            const params = new URLSearchParams({ workspaceId, status, reason });
             const res = await fetch(`/api/receipts/${id}/status?${params}`, {
                 method: 'PATCH',
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -334,6 +338,44 @@
             if (res.ok) fetchReceipts();
         } catch (e) { alert('처리 권한이 없습니다.'); }
     }
+    // async function updateStatus(id, status) {
+    //     let reason = "관리자 요청"; // 기본값
+    //
+    //     if (status === 'REJECTED') {
+    //         const input = prompt("반려 사유를 입력하세요:");
+    //
+    //         // 1. [테스트용] 프론트엔드 방어막 주석 처리 유지
+    //         // if (input === null) return;
+    //         // const trimmedReason = input.trim();
+    //         // if (!trimmedReason) { ... return; }
+    //
+    //         // 2. [핵심] 기본값 "관리자 요청"을 사용자가 입력한 값(스페이스바 등)으로 덮어씁니다.
+    //         reason = input;
+    //     }
+    //
+    //     try {
+    //         // reason이 "  "(스페이스바)인 상태로 백엔드에 날아갑니다.
+    //         const params = new URLSearchParams({ workspaceId, status, reason });
+    //         const res = await fetch(`/api/receipts/${id}/status?${params}`, {
+    //             method: 'PATCH',
+    //             headers: { 'Authorization': `Bearer ${token}` }
+    //         });
+    //
+    //         // 3. 백엔드가 에러를 던졌을 때(res.ok가 아닐 때) 메시지 확인
+    //         if (!res.ok) {
+    //             const errorData = await res.json();
+    //             console.log("백엔드 응답 데이터:", errorData);
+    //
+    //             // 이 알림창이 뜨면 백엔드 검증 로직이 승리한 겁니다!
+    //             alert(`백엔드 검증 성공! 메시지: ${errorData.message}`);
+    //             return;
+    //         }
+    //
+    //         if (res.ok) fetchReceipts();
+    //     } catch (e) {
+    //         alert('처리 권한이 없습니다.');
+    //     }
+    // }
 
     async function submitEdit() {
         const id = el('editId').value;
@@ -344,7 +386,7 @@
             tradeAt: tradeAtValue
         };
         try {
-            const params = new URLSearchParams({ workspaceId, userId, isAdmin: window.checkIsAdmin() });
+            const params = new URLSearchParams({ workspaceId });
             const res = await fetch(`/api/receipts/${id}?${params}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -355,34 +397,39 @@
     }
 
     async function showHistory(id) {
+        const token = localStorage.getItem('accessToken');
         try {
             const res = await fetch(`/api/receipts/${id}/history`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            const logs = await res.json();
-            el('historyContent').innerHTML = logs.length ? logs.map(l => `
-                <div class="history-item">
-                    <strong>${l.oldStatus} ➜ ${l.newStatus}</strong>
-                    <p>${l.reason || ''}</p>
-                </div>`).join('') : '<div class="history-empty">이력 없음</div>';
+            const json = await res.json();
+            const logs = json.data;
+
+            el('historyContent').innerHTML = logs.length ? logs.map(l => {
+
+                const meta = JSON.parse(l.metaJson || '{}');
+                const time = l.createdAt ? l.createdAt.replace('T', ' ').substring(0, 16) : '-';
+
+
+                const statusFlow = (meta.oldStatus && meta.newStatus)
+                    ? `<strong>${meta.oldStatus} ➜ ${meta.newStatus}</strong>`
+                    : `<strong>액션: ${l.action}</strong>`;
+
+                return `
+                <div class="history-item" style="border-bottom: 1px solid #eee; padding: 10px 0;">
+                    <div style="font-size: 0.8rem; color: #64748b;">${time} | 실행자: ${l.actorId}</div>
+                    ${statusFlow}
+                    <p style="margin: 4px 0 0; color: #475569;">${meta.reason || ''}</p>
+                </div>`;
+            }).join('') : '<div class="history-empty">이력 없음</div>';
+
             openModal('historyModal');
-        } catch (e) { alert('조회 실패'); }
+        } catch (e) {
+            console.error(e);
+            alert('조회 실패');
+        }
     }
 
-    // ✅ 재제출 함수
-    async function handleResubmit(id) {
-        if (!confirm("반려된 영수증을 다시 제출하시겠습니까?")) return;
-        try {
-            const res = await fetch(`/api/receipts/${id}/resubmit?workspaceId=${workspaceId}&userId=${userId}`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) {
-                alert("성공적으로 재제출되었습니다.");
-                fetchReceipts();
-            }
-        } catch (e) { alert("재제출 실패: " + e.message); }
-    }
 
     el('receiptList').addEventListener('click', (e) => {
         const btn = e.target.closest('button');
@@ -392,8 +439,6 @@
         if (action === 'history') showHistory(id);
         if (action === 'approve') updateStatus(id, 'APPROVED');
         if (action === 'reject') updateStatus(id, 'REJECTED');
-        // ✅ 재제출 액션 추가
-        if (action === 'resubmit') handleResubmit(id);
     });
 
     function openEditModalById(id) {

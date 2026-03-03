@@ -105,7 +105,7 @@ public class WorkspaceService {
   @Transactional(readOnly = true)
   public List<WorkspaceMember> getMyWorkspaces(String principal) {
     User user = findUserByPrincipal(principal);
-    // 내가 속한 모든 워크스페이스 멤버 정보를 가져옵니다.
+
     return workspaceMemberRepository.findAllByUserId(user.getId());
   }
 
