@@ -1,5 +1,6 @@
 package com.example.backend.repository;
 
+import com.example.backend.entity.MembershipStatus;
 import com.example.backend.entity.WorkspaceMember;
 import java.util.List;
 import java.util.Optional;
@@ -11,4 +12,6 @@ public interface WorkspaceMemberRepository extends JpaRepository<WorkspaceMember
   List<WorkspaceMember> findAllByWorkspaceId(Long workspaceId);
 
   List<WorkspaceMember> findAllByUserId(Long userId);
+
+  List<WorkspaceMember> findAllByUserIdAndStatus(Long userId, MembershipStatus status);
 }
